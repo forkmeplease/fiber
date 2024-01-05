@@ -2,9 +2,8 @@
 // 📃 Github Repository: https://github.com/gofiber/fiber
 // 📌 API Documentation: https://docs.gofiber.io
 
+//nolint:bodyclose // Much easier to just ignore memory leaks in tests
 package fiber
-
-// go test -v ./... -run=^$ -bench=Benchmark_Router -benchmem -count=2
 
 import (
 	"encoding/json"
@@ -17,10 +16,11 @@ import (
 	"testing"
 
 	"github.com/gofiber/fiber/v2/utils"
+
 	"github.com/valyala/fasthttp"
 )
 
-var routesFixture = routeJSON{}
+var routesFixture routeJSON
 
 func init() {
 	dat, err := os.ReadFile("./.github/testdata/testRoutes.json")
@@ -33,6 +33,8 @@ func init() {
 }
 
 func Test_Route_Match_SameLength(t *testing.T) {
+	t.Parallel()
+
 	app := New()
 
 	app.Get("/:param", func(c *Ctx) error {
@@ -58,6 +60,8 @@ func Test_Route_Match_SameLength(t *testing.T) {
 }
 
 func Test_Route_Match_Star(t *testing.T) {
+	t.Parallel()
+
 	app := New()
 
 	app.Get("/*", func(c *Ctx) error {
@@ -104,6 +108,8 @@ func Test_Route_Match_Star(t *testing.T) {
 }
 
 func Test_Route_Match_Root(t *testing.T) {
+	t.Parallel()
+
 	app := New()
 
 	app.Get("/", func(c *Ctx) error {
@@ -120,6 +126,8 @@ func Test_Route_Match_Root(t *testing.T) {
 }
 
 func Test_Route_Match_Parser(t *testing.T) {
+	t.Parallel()
+
 	app := New()
 
 	app.Get("/foo/:ParamName", func(c *Ctx) error {
@@ -147,6 +155,8 @@ func Test_Route_Match_Parser(t *testing.T) {
 }
 
 func Test_Route_Match_Middleware(t *testing.T) {
+	t.Parallel()
+
 	app := New()
 
 	app.Use("/foo/*", func(c *Ctx) error {
@@ -172,6 +182,8 @@ func Test_Route_Match_Middleware(t *testing.T) {
 }
 
 func Test_Route_Match_UnescapedPath(t *testing.T) {
+	t.Parallel()
+
 	app := New(Config{UnescapePath: true})
 
 	app.Use("/créer", func(c *Ctx) error {
@@ -198,6 +210,8 @@ func Test_Route_Match_UnescapedPath(t *testing.T) {
 }
 
 func Test_Route_Match_WithEscapeChar(t *testing.T) {
+	t.Parallel()
+
 	app := New()
 	// static route and escaped part
 	app.Get("/v1/some/resource/name\\:customVerb", func(c *Ctx) error {
@@ -242,6 +256,8 @@ func Test_Route_Match_WithEscapeChar(t *testing.T) {
 }
 
 func Test_Route_Match_Middleware_HasPrefix(t *testing.T) {
+	t.Parallel()
+
 	app := New()
 
 	app.Use("/foo", func(c *Ctx) error {
@@ -258,6 +274,8 @@ func Test_Route_Match_Middleware_HasPrefix(t *testing.T) {
 }
 
 func Test_Route_Match_Middleware_Root(t *testing.T) {
+	t.Parallel()
+
 	app := New()
 
 	app.Use("/", func(c *Ctx) error {
@@ -274,16 +292,20 @@ func Test_Route_Match_Middleware_Root(t *testing.T) {
 }
 
 func Test_Router_Register_Missing_Handler(t *testing.T) {
+	t.Parallel()
+
 	app := New()
 	defer func() {
 		if err := recover(); err != nil {
 			utils.AssertEqual(t, "missing handler in route: /doe\n", fmt.Sprintf("%v", err))
 		}
 	}()
-	app.register("USE", "/doe")
+	app.register("USE", "/doe", nil)
 }
 
 func Test_Ensure_Router_Interface_Implementation(t *testing.T) {
+	t.Parallel()
+
 	var app interface{} = (*App)(nil)
 	_, ok := app.(Router)
 	utils.AssertEqual(t, true, ok)
@@ -294,6 +316,8 @@ func Test_Ensure_Router_Interface_Implementation(t *testing.T) {
 }
 
 func Test_Router_Handler_SetETag(t *testing.T) {
+	t.Parallel()
+
 	app := New()
 	app.config.ETag = true
 
@@ -309,6 +333,8 @@ func Test_Router_Handler_SetETag(t *testing.T) {
 }
 
 func Test_Router_Handler_Catch_Error(t *testing.T) {
+	t.Parallel()
+
 	app := New()
 	app.config.ErrorHandler = func(ctx *Ctx, err error) error {
 		return errors.New("fake error")
@@ -326,6 +352,8 @@ func Test_Router_Handler_Catch_Error(t *testing.T) {
 }
 
 func Test_Route_Static_Root(t *testing.T) {
+	t.Parallel()
+
 	dir := "./.github/testdata/fs/css"
 	app := New()
 	app.Static("/", dir, Static{
@@ -361,6 +389,8 @@ func Test_Route_Static_Root(t *testing.T) {
 }
 
 func Test_Route_Static_HasPrefix(t *testing.T) {
+	t.Parallel()
+
 	dir := "./.github/testdata/fs/css"
 	app := New()
 	app.Static("/static", dir, Static{
@@ -441,6 +471,40 @@ func Test_Route_Static_HasPrefix(t *testing.T) {
 	body, err = io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, true, strings.Contains(app.getString(body), "color"))
+}
+
+func Test_Router_NotFound(t *testing.T) {
+	app := New()
+	app.Use(func(c *Ctx) error {
+		return c.Next()
+	})
+	appHandler := app.Handler()
+	c := &fasthttp.RequestCtx{}
+
+	c.Request.Header.SetMethod("DELETE")
+	c.URI().SetPath("/this/route/does/not/exist")
+
+	appHandler(c)
+
+	utils.AssertEqual(t, 404, c.Response.StatusCode())
+	utils.AssertEqual(t, "Cannot DELETE /this/route/does/not/exist", string(c.Response.Body()))
+}
+
+func Test_Router_NotFound_HTML_Inject(t *testing.T) {
+	app := New()
+	app.Use(func(c *Ctx) error {
+		return c.Next()
+	})
+	appHandler := app.Handler()
+	c := &fasthttp.RequestCtx{}
+
+	c.Request.Header.SetMethod("DELETE")
+	c.URI().SetPath("/does/not/exist<script>alert('foo');</script>")
+
+	appHandler(c)
+
+	utils.AssertEqual(t, 404, c.Response.StatusCode())
+	utils.AssertEqual(t, "Cannot DELETE /does/not/exist&lt;script&gt;alert(&#39;foo&#39;);&lt;/script&gt;", string(c.Response.Body()))
 }
 
 //////////////////////////////////////////////
@@ -551,7 +615,7 @@ func Benchmark_Router_Chain(b *testing.B) {
 
 	c := &fasthttp.RequestCtx{}
 
-	c.Request.Header.SetMethod("GET")
+	c.Request.Header.SetMethod(MethodGet)
 	c.URI().SetPath("/")
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
@@ -575,7 +639,7 @@ func Benchmark_Router_WithCompression(b *testing.B) {
 	appHandler := app.Handler()
 	c := &fasthttp.RequestCtx{}
 
-	c.Request.Header.SetMethod("GET")
+	c.Request.Header.SetMethod(MethodGet)
 	c.URI().SetPath("/")
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
@@ -801,6 +865,6 @@ type testRoute struct {
 }
 
 type routeJSON struct {
-	TestRoutes []testRoute `json:"testRoutes"`
-	GithubAPI  []testRoute `json:"githubAPI"`
+	TestRoutes []testRoute `json:"test_routes"`
+	GithubAPI  []testRoute `json:"github_api"`
 }

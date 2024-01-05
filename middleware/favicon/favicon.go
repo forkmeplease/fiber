@@ -16,10 +16,20 @@ type Config struct {
 	// Optional. Default: nil
 	Next func(c *fiber.Ctx) bool
 
+	// Raw data of the favicon file
+	//
+	// Optional. Default: nil
+	Data []byte `json:"-"`
+
 	// File holds the path to an actual favicon that will be cached
 	//
 	// Optional. Default: ""
 	File string `json:"file"`
+
+	// URL for favicon handler
+	//
+	// Optional. Default: "/favicon.ico"
+	URL string `json:"url"`
 
 	// FileSystem is an optional alternate filesystem to search for the favicon in.
 	// An example of this could be an embedded or network filesystem
@@ -37,6 +47,7 @@ type Config struct {
 var ConfigDefault = Config{
 	Next:         nil,
 	File:         "",
+	URL:          fPath,
 	CacheControl: "public, max-age=31536000",
 }
 
@@ -60,6 +71,9 @@ func New(config ...Config) fiber.Handler {
 		if cfg.Next == nil {
 			cfg.Next = ConfigDefault.Next
 		}
+		if cfg.URL == "" {
+			cfg.URL = ConfigDefault.URL
+		}
 		if cfg.File == "" {
 			cfg.File = ConfigDefault.File
 		}
@@ -74,7 +88,11 @@ func New(config ...Config) fiber.Handler {
 		icon    []byte
 		iconLen string
 	)
-	if cfg.File != "" {
+	if cfg.Data != nil {
+		// use the provided favicon data
+		icon = cfg.Data
+		iconLen = strconv.Itoa(len(cfg.Data))
+	} else if cfg.File != "" {
 		// read from configured filesystem if present
 		if cfg.FileSystem != nil {
 			f, err := cfg.FileSystem.Open(cfg.File)
@@ -99,7 +117,7 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		// Only respond to favicon requests
-		if c.Path() != fPath {
+		if c.Path() != cfg.URL {
 			return c.Next()
 		}
 
